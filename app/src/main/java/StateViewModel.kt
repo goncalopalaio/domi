@@ -1,85 +1,72 @@
-import android.net.MacAddress
 import android.util.Log
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.tri10.domi.DeviceScanner
-import com.tri10.domi.ScannerResult
-import com.tri10.domi.msc.ApplicationLogger
-import com.tri10.domi.msc.debug
-import com.tri10.domi.msc.profile
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectIndexed
-import kotlinx.coroutines.flow.update
+import com.juul.kable.*
+import com.juul.kable.Scanner
+import com.juul.kable.logs.Logging
+import com.juul.kable.logs.SystemLogEngine
 import kotlinx.coroutines.launch
+import java.lang.Exception
+import java.util.*
 
-class StateViewModel(private val deviceScanner: DeviceScanner) : ViewModel() {
+private const val TAG = "StateViewModel"
+class StateViewModel : ViewModel() {
 
-    private val _scannedDevices = mutableStateMapOf<String, Device>()
-    val scannedDevices: Map<String, Device> = _scannedDevices
+    private val _scannedDevices = mutableStateMapOf<String, Advertisement>()
+    val scannedDevices: Map<String, Advertisement> = _scannedDevices
 
-    fun init() {
-        profile("StateViewModel", "init", true)
-        viewModelScope.launch {
-            profile("StateViewModel", "deviceScanner.init", true)
-            deviceScanner.init()
-            profile("StateViewModel", "deviceScanner.init", false)
-        }
-        viewModelScope.launch {
-            profile("StateViewModel", "deviceScanner.data.collectIndexed", true)
-            deviceScanner.data.collectIndexed { index, value ->
-                debug("init.deviceScanner.data.collectIndexed index=$index, value=$value")
-                when (value) {
-                    is ScannerResult.ScannedDevice -> {
-                        if (value.macAddress.isNotBlank() && !_scannedDevices.containsKey(value.macAddress)) {
-                            _scannedDevices[value.macAddress] =
-                                Device(value.macAddress, value.name, value.rssi)
-                        }
-                    }
-                    is ScannerResult.ScanningError -> {}
-                }
+    private val _services = mutableStateMapOf<Int, DiscoveredService>()
+    val services: Map<Int, DiscoveredService> = _services
+
+    private val _state = mutableStateMapOf<Int, State>()
+    val state: Map<Int, State> = _state
+
+    fun start() = try {
+        Log.d(TAG, "start")
+        val scanner = Scanner {
+            filters = null
+            logging {
+                engine = SystemLogEngine
+                level = Logging.Level.Warnings
+                format = Logging.Format.Multiline
             }
         }
-        profile("StateViewModel", "init", false)
-    }
-
-    fun onStopScanRequested() {
-        debug("onStopScanRequested")
-
-        viewModelScope.launch { deviceScanner.stopScan() }
-    }
-
-    fun onScanRequested() {
-        debug("onScanRequested")
-
 
         viewModelScope.launch {
-
-            deviceScanner.startScan()
+            scanner.advertisements.collect {
+                _scannedDevices[it.address] = it
+            }
         }
+    } catch (e: Exception) {
+        Log.e(TAG, "e=$e")
     }
 
-    fun onConnectRequested(macAddress: String) {
-        debug("onConnectRequested")
+    fun test(advertisement: Advertisement) {
+        val FTMS_UUID = UUID.fromString("00001826-0000-1000-8000-00805F9B34FB")
 
+        Log.d(TAG, "advertisement=$advertisement")
         viewModelScope.launch {
-            deviceScanner.connect(macAddress)
-        }
-    }
-
-    fun onDisconnectAll() {
-        debug("onDisconnectAll")
-
-        viewModelScope.launch {
-            deviceScanner.disconnectAll()
+            val p = peripheral(advertisement) {
+                onServicesDiscovered {
+                    Log.d(TAG, "onServicesDiscovered | this=$this")
+                }
+            }
+            Log.d(TAG, "Connecting | p=$p")
+            try {
+                p.connect()
+                Log.d(TAG, "Connected | p=$p")
+                viewModelScope.launch {
+                    p.state.collect {
+                        Log.d(TAG, "State changed | it=$it")
+                        _state[0] = it
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "While connecting | e=$e")
+            }
         }
     }
 }
-
-sealed interface State
-data class EmptyState(val text: String, val devices: List<String>) : State
-data class ScanningState(val devices: Map<String, Device>) : State
-
-data class Device(val macAddress: String, val deviceName: String, val rssi: Int)

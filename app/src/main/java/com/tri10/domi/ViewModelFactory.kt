@@ -4,11 +4,11 @@ import StateViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 
-class ViewModelFactory(private val dependencies: Dependencies): ViewModelProvider.Factory {
+class ViewModelFactory(): ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when (modelClass) {
-            StateViewModel::class.java -> StateViewModel(dependencies.deviceScanner) as T
+            StateViewModel::class.java -> StateViewModel() as T
             else -> throw IllegalArgumentException("Not implemented | modelClass:$modelClass")
         }
     }

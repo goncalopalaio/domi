@@ -1,10 +1,10 @@
 package com.tri10.domi
 
-import Device
 import StateViewModel
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -18,19 +18,20 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.juul.kable.Advertisement
+import com.juul.kable.DiscoveredService
+import com.juul.kable.State
 import com.tri10.domi.msc.ApplicationLogger
 import com.tri10.domi.msc.debug
 import com.tri10.domi.msc.profile
 import com.tri10.domi.ui.theme.DomiTheme
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 
 class MainActivity : ComponentActivity() {
     init {
         ApplicationLogger.inject(AndroidLogger)
     }
 
-    private val viewModelFactory by lazy { ViewModelFactory(AndroidDependencies(application)) }
+    private val viewModelFactory by lazy { ViewModelFactory() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,7 +58,6 @@ class MainActivity : ComponentActivity() {
         requestPermissions(permissions, 1234)
 
         val viewModel = viewModelFactory.create(StateViewModel::class.java)
-        viewModel.init()
 
         setContent {
             DomiTheme {
@@ -87,22 +87,47 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Greeting(name: String, stateViewModel: StateViewModel) {
     val devices = stateViewModel.scannedDevices
+    val services = stateViewModel.services
+    val state = stateViewModel.state
     Column {
-        Button(onClick = { stateViewModel.onScanRequested() }) { Text("Start Scan") }
-        Button(onClick = { stateViewModel.onStopScanRequested() }) { Text("Stop Scan") }
-        Button(onClick = { stateViewModel.onDisconnectAll() }) { Text("Disconnect All") }
+        Button(onClick = { stateViewModel.start() }) { Text("Start Scan") }
 
+        Text("Device List")
         DeviceList(messages = devices.values.toList(), stateViewModel)
+        Text("State")
+        StateList(messages = state.values.toList(), stateViewModel)
+        Text("Service List")
+        ServiceList(messages = services.values.toList(), stateViewModel)
     }
 
 }
 
 @Composable
-fun DeviceList(messages: List<Device>, stateViewModel: StateViewModel) {
+fun DeviceList(messages: List<Advertisement>, stateViewModel: StateViewModel) {
     LazyColumn {
         items(messages) { device ->
-            Button(onClick = { stateViewModel.onConnectRequested(device.macAddress) }) {
-                Text("${device.deviceName} | ${device.macAddress} | ${device.rssi}")
+            Button(onClick = { stateViewModel.test(device) }) {
+                Text("${device.address} | ${device.name} | ${device.peripheralName}")
+            }
+        }
+    }
+}
+
+@Composable
+fun StateList(messages: List<State>, stateViewModel: StateViewModel) {
+    LazyColumn {
+        items(messages) { state ->
+            Text("$state")
+        }
+    }
+}
+
+@Composable
+fun ServiceList(messages: List<DiscoveredService>, stateViewModel: StateViewModel) {
+    LazyColumn {
+        items(messages) { service ->
+            Button(onClick = { }) {
+                Text("${service.serviceUuid} | ${service.characteristics}")
             }
 
         }
@@ -112,17 +137,7 @@ fun DeviceList(messages: List<Device>, stateViewModel: StateViewModel) {
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
-    val viewModel = StateViewModel(object : DeviceScanner {
-        override val data: SharedFlow<ScannerResult>
-            get() = MutableSharedFlow()
-
-        override suspend fun init() {}
-
-        override suspend fun startScan() {}
-        override suspend fun stopScan() {}
-        override suspend fun connect(macAddress: String) {}
-        override suspend fun disconnectAll() {}
-    })
+    val viewModel = StateViewModel()
     DomiTheme {
         Greeting("Android", viewModel)
     }
